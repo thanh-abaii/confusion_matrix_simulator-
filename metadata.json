@@ -1,0 +1,5 @@
+{
+  "name": "Confusion Matrix Master",
+  "description": "Một ứng dụng tương tác trực quan để học về Confusion Matrix và các chỉ số đánh giá mô hình phân loại (Precision, Recall, F1, AUC) với sự hỗ trợ của AI để tạo tình huống thực tế.",
+  "requestFramePermissions": []
+}
