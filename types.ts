@@ -13,6 +13,12 @@ export interface Scenario {
   description: string;
   fpConsequence: string;
   fnConsequence: string;
+  // AI recommended simulation settings for this specific scenario
+  simulation?: {
+    separation: number; // 0.1 (Hard) to 0.8 (Easy)
+    noise: number;      // 0.1 to 0.3
+    balance: number;    // 0.01 (Rare) to 0.9 (Common)
+  };
 }
 
 export interface DistributionPoint {

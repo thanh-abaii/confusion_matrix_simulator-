@@ -12,13 +12,19 @@ export const generateScenario = async (topic: string): Promise<Scenario> => {
     const ai = getClient();
     
     const prompt = `Tạo một kịch bản phân loại nhị phân (binary classification) thực tế về chủ đề: "${topic}".
-    Trả về JSON với các trường:
-    - topic: Tên ngắn gọn của chủ đề.
-    - positiveLabel: Nhãn Dương tính (Positive) nghĩa là gì (ví dụ: "Là thư rác", "Bị bệnh").
-    - negativeLabel: Nhãn Âm tính (Negative) nghĩa là gì.
-    - description: Mô tả ngắn về bài toán.
-    - fpConsequence: Hậu quả của False Positive (Dương tính giả) trong ngữ cảnh này.
-    - fnConsequence: Hậu quả của False Negative (Âm tính giả) trong ngữ cảnh này.
+    Trả về JSON với các trường mô tả văn bản và CÁC THAM SỐ MÔ PHỎNG (simulation) ước lượng cho bài toán này:
+
+    1. topic: Tên ngắn gọn.
+    2. positiveLabel: Nhãn Positive (VD: "Gian lận").
+    3. negativeLabel: Nhãn Negative (VD: "Hợp lệ").
+    4. description: Mô tả ngắn.
+    5. fpConsequence: Hậu quả FP.
+    6. fnConsequence: Hậu quả FN.
+    7. simulation: Object chứa các số liệu ước lượng thực tế:
+       - separation (0.1 đến 0.9): Bài toán này dễ hay khó phân biệt? (0.2=Rất khó/Chồng lấn nhiều, 0.8=Rất dễ/Tách biệt rõ).
+       - noise (0.1 đến 0.3): Độ nhiễu dữ liệu (thường khoảng 0.15).
+       - balance (0.05 đến 0.95): Tỉ lệ Positive trong thực tế (VD: Gian lận/Ung thư rất hiếm ~0.05-0.1, Spam ~0.3-0.5).
+
     Trả lời bằng tiếng Việt.`;
 
     const response = await ai.models.generateContent({
@@ -35,8 +41,17 @@ export const generateScenario = async (topic: string): Promise<Scenario> => {
             description: { type: Type.STRING },
             fpConsequence: { type: Type.STRING },
             fnConsequence: { type: Type.STRING },
+            simulation: {
+                type: Type.OBJECT,
+                properties: {
+                    separation: { type: Type.NUMBER },
+                    noise: { type: Type.NUMBER },
+                    balance: { type: Type.NUMBER }
+                },
+                required: ["separation", "noise", "balance"]
+            }
           },
-          required: ["topic", "positiveLabel", "negativeLabel", "description", "fpConsequence", "fnConsequence"]
+          required: ["topic", "positiveLabel", "negativeLabel", "description", "fpConsequence", "fnConsequence", "simulation"]
         }
       }
     });
@@ -54,7 +69,12 @@ export const generateScenario = async (topic: string): Promise<Scenario> => {
       negativeLabel: "Khỏe mạnh",
       description: "Mô hình AI phân tích ảnh X-quang để phát hiện khối u.",
       fpConsequence: "Bệnh nhân lo lắng vô cớ, tốn kém chi phí xét nghiệm thêm.",
-      fnConsequence: "Bỏ sót bệnh, bệnh nhân không được điều trị kịp thời, nguy hiểm tính mạng."
+      fnConsequence: "Bỏ sót bệnh, bệnh nhân không được điều trị kịp thời, nguy hiểm tính mạng.",
+      simulation: {
+          separation: 0.4,
+          noise: 0.15,
+          balance: 0.3
+      }
     };
   }
 };

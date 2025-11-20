@@ -6,7 +6,7 @@ import MatrixGrid from './components/MatrixGrid';
 import MetricsPanel from './components/MetricsPanel';
 import Curves from './components/Curves';
 import SimulationControl from './components/SimulationControl';
-import { BrainCircuit, RefreshCw, Settings2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { BrainCircuit, RefreshCw, Settings2, ToggleLeft, ToggleRight, Search } from 'lucide-react';
 
 // Constants for simulation
 const TOTAL_SAMPLES = 1000;
@@ -101,6 +101,27 @@ const App: React.FC = () => {
   });
   const [loadingScenario, setLoadingScenario] = useState(false);
 
+  // Helper to calculate matrix from params (Used for sync)
+  const calculateMatrixFromParams = (sep: number, noise: number, bal: number, thresh: number) => {
+        const distParams = {
+            negMean: 0.5 - (sep / 2),
+            posMean: 0.5 + (sep / 2),
+            std: noise
+        };
+        const posCount = TOTAL_SAMPLES * bal;
+        const negCount = TOTAL_SAMPLES * (1 - bal);
+
+        const tpr = 1 - normalCDF(thresh, distParams.posMean, distParams.std);
+        const tnr = normalCDF(thresh, distParams.negMean, distParams.std);
+
+        return {
+            tp: posCount * tpr,
+            fn: posCount * (1 - tpr),
+            tn: negCount * tnr,
+            fp: negCount * (1 - tnr)
+        };
+  };
+
   // Handle AI Scenario Generation
   const handleGenerateScenario = async () => {
     if (!topicInput) return;
@@ -108,6 +129,24 @@ const App: React.FC = () => {
     try {
       const newScenario = await generateScenario(topicInput);
       setScenario(newScenario);
+      
+      // Update Simulation Parameters if provided by AI
+      if (newScenario.simulation) {
+          const { separation, noise, balance } = newScenario.simulation;
+          setSimSeparation(separation);
+          setSimNoise(noise);
+          setSimBalance(balance);
+          
+          // Also update manual values to match this new simulation profile
+          // This ensures if user switches to Manual, the numbers make sense for the topic
+          const m = calculateMatrixFromParams(separation, noise, balance, simThreshold);
+          setManualValues({
+              tp: Math.round(m.tp),
+              tn: Math.round(m.tn),
+              fp: Math.round(m.fp),
+              fn: Math.round(m.fn)
+          });
+      }
     } catch (e) {
       alert("Không thể tạo kịch bản. Kiểm tra API Key.");
     } finally {
@@ -235,31 +274,35 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-20">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="bg-red-600 p-2 rounded-lg text-white">
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-br from-red-600 to-red-700 p-2 rounded-lg text-white shadow-md">
               <BrainCircuit size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Confusion Matrix <span className="text-red-600">Simulator</span></h1>
-              <p className="text-xs text-gray-500">Học máy trực quan & tương tác</p>
+              <h1 className="text-xl font-bold text-gray-800 tracking-tight">Confusion Matrix <span className="text-red-600">Simulator</span></h1>
+              <p className="text-xs text-gray-500 font-medium">Học máy trực quan & tương tác</p>
             </div>
           </div>
           
-          <div className="flex gap-2">
-             <input 
-                type="text" 
-                placeholder="VD: Ung thư, Gian lận tài chính..." 
-                className="border border-gray-300 rounded px-3 py-1 text-sm w-64 focus:ring-2 focus:ring-red-500 outline-none hidden sm:block"
-                value={topicInput}
-                onChange={(e) => setTopicInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleGenerateScenario()}
-             />
+          {/* Search Bar */}
+          <div className="flex w-full sm:w-auto items-center gap-2">
+             <div className="relative flex-1 sm:flex-none group">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-red-500 transition-colors" size={16} />
+                <input 
+                    type="text" 
+                    placeholder="Nhập chủ đề (VD: Ung thư, Gian lận...)" 
+                    className="pl-10 pr-4 py-2 w-full sm:w-80 bg-white border border-gray-200 rounded-full text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 shadow-sm transition-all"
+                    value={topicInput}
+                    onChange={(e) => setTopicInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleGenerateScenario()}
+                />
+             </div>
              <button 
                 onClick={handleGenerateScenario}
                 disabled={loadingScenario}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded text-sm font-medium transition-colors flex items-center gap-2"
+                className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-full text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed whitespace-nowrap"
              >
                 {loadingScenario ? <RefreshCw className="animate-spin" size={16}/> : "Tạo kịch bản AI"}
              </button>
@@ -267,19 +310,26 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
         
         {/* Scenario Description */}
-        <section className="bg-white border border-gray-200 shadow-sm rounded-xl p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-1">{scenario.topic}</h2>
-            <p className="text-gray-600 mb-2">{scenario.description}</p>
-            <div className="flex flex-wrap gap-4 text-sm mt-3">
-                <span className="bg-red-50 px-3 py-1 rounded border border-red-200 text-red-700">
-                    <strong>Positive (1):</strong> {scenario.positiveLabel}
-                </span>
-                <span className="bg-emerald-50 px-3 py-1 rounded border border-emerald-200 text-emerald-700">
-                    <strong>Negative (0):</strong> {scenario.negativeLabel}
-                </span>
+        <section className="bg-white border border-gray-200 shadow-sm rounded-xl p-6 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-1">{scenario.topic}</h2>
+                    <p className="text-gray-600 max-w-3xl">{scenario.description}</p>
+                </div>
+                <div className="flex flex-wrap gap-3 text-sm shrink-0">
+                    <div className="bg-red-50 px-4 py-2 rounded-lg border border-red-100 text-red-800 flex flex-col">
+                        <span className="text-[10px] uppercase tracking-wider font-bold opacity-60">Positive (1)</span>
+                        <span className="font-bold">{scenario.positiveLabel}</span>
+                    </div>
+                    <div className="bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 text-emerald-800 flex flex-col">
+                        <span className="text-[10px] uppercase tracking-wider font-bold opacity-60">Negative (0)</span>
+                        <span className="font-bold">{scenario.negativeLabel}</span>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -290,19 +340,19 @@ const App: React.FC = () => {
             <div className="lg:col-span-2 space-y-6">
                 
                 {/* Mode Toggle Toolbar */}
-                <div className="flex justify-between items-center bg-gray-100 p-1 rounded-lg border border-gray-200 mb-2">
+                <div className="flex justify-between items-center bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm mb-2">
                     <button 
                         onClick={() => setIsManualMode(false)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${!isManualMode ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${!isManualMode ? 'bg-red-50 text-red-600 shadow-sm border border-red-100' : 'text-gray-500 hover:bg-gray-50'}`}
                     >
-                        <Settings2 size={16} />
+                        <Settings2 size={18} />
                         Chế độ Mô phỏng
                     </button>
                     <button 
                         onClick={() => setIsManualMode(true)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-all ${isManualMode ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${isManualMode ? 'bg-red-50 text-red-600 shadow-sm border border-red-100' : 'text-gray-500 hover:bg-gray-50'}`}
                     >
-                        {isManualMode ? <ToggleRight size={16}/> : <ToggleLeft size={16}/>}
+                        {isManualMode ? <ToggleRight size={18}/> : <ToggleLeft size={18}/>}
                         Chế độ Thủ công (Nhập số)
                     </button>
                 </div>
@@ -312,9 +362,9 @@ const App: React.FC = () => {
                         <h3 className="font-bold text-gray-700 flex items-center gap-2">
                             Mô phỏng phân phối & Ngưỡng
                         </h3>
-                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded flex items-center gap-1">
+                        <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded flex items-center gap-1 border border-blue-100">
                             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                            Rê chuột vào ma trận hoặc biểu đồ để liên kết
+                            Hover để xem liên kết
                         </span>
                     </div>
                     
@@ -356,7 +406,7 @@ const App: React.FC = () => {
                              paramNameForAI="Sự mất cân bằng dữ liệu (Class Balance/Imbalance)"
                              value={activeBalance}
                              onChange={setSimBalance}
-                             min={0.1} max={0.9} step={0.05}
+                             min={0.01} max={0.99} step={0.01}
                              scenario={scenario}
                              disabled={isManualMode}
                          />
@@ -381,15 +431,23 @@ const App: React.FC = () => {
                     />
                 </div>
 
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-sm text-blue-800">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border border-blue-100 text-sm text-blue-900 shadow-sm">
                     {isManualMode ? (
                          <p><strong>Chế độ Thủ công:</strong> Bạn có thể nhập trực tiếp số lượng TP, TN, FP, FN vào ma trận bên trên để xem các chỉ số thay đổi như thế nào.</p>
                     ) : (
                         <>
-                            <p className="mb-2"><strong>Mẹo:</strong> Di chuyển thanh dọc (Threshold) trên biểu đồ để xem sự đánh đổi (trade-off) giữa Precision và Recall.</p>
-                            <ul className="list-disc pl-4 space-y-1 text-xs">
-                                <li>Kéo sang phải: Tăng Precision, Giảm Recall (Chặt chẽ hơn).</li>
-                                <li>Kéo sang trái: Tăng Recall, Giảm Precision (Bắt nhầm còn hơn bỏ sót).</li>
+                            <p className="mb-3 font-bold flex items-center gap-2">
+                                💡 Mẹo tương tác:
+                            </p>
+                            <ul className="list-none space-y-2 text-xs">
+                                <li className="flex gap-2">
+                                    <span className="bg-blue-200 text-blue-800 w-5 h-5 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px]">1</span>
+                                    Di chuyển thanh dọc (Threshold) trên biểu đồ để xem sự đánh đổi giữa Precision và Recall.
+                                </li>
+                                <li className="flex gap-2">
+                                    <span className="bg-blue-200 text-blue-800 w-5 h-5 rounded-full flex items-center justify-center shrink-0 font-bold text-[10px]">2</span>
+                                    Rê chuột vào các ô trong Ma trận để thấy vùng tương ứng sáng lên trên biểu đồ.
+                                </li>
                             </ul>
                         </>
                     )}
@@ -400,8 +458,11 @@ const App: React.FC = () => {
         {/* Curves Section */}
         <section className="transition-all">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-800">Đường cong đánh giá (Evaluation Curves)</h2>
-                {isManualMode && <span className="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">Ước lượng từ dữ liệu thủ công</span>}
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <div className="w-1 h-6 bg-red-600 rounded-full"></div>
+                    Đường cong đánh giá (Evaluation Curves)
+                </h2>
+                {isManualMode && <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full border border-gray-200">Ước lượng từ dữ liệu thủ công</span>}
             </div>
             <Curves points={curvePoints} currentThreshold={activeThreshold} />
         </section>
